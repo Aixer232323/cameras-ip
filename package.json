@@ -1,0 +1,10 @@
+{
+  "name": "cameras-ip",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cerca i gestio de camares IP a la xarxa local",
+  "main": "src/scan.js",
+  "scripts": {
+    "scan": "node src/scan.js"
+  }
+}
