@@ -33,14 +33,12 @@ function buildSecurityHeader(username, password) {
     </Security>`;
 }
 
-function buildEnvelope(username, password) {
+function buildEnvelope(bodyXml, username, password) {
   const header = username && password ? buildSecurityHeader(username, password) : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
   <s:Header>${header}</s:Header>
-  <s:Body>
-    <tds:GetDeviceInformation/>
-  </s:Body>
+  <s:Body>${bodyXml}</s:Body>
 </s:Envelope>`;
 }
 
@@ -82,14 +80,17 @@ function extractTag(xml, tag) {
   return match ? match[1].trim() : null;
 }
 
-async function getDeviceInformation(xaddr, username, password) {
-  const body = buildEnvelope(username, password);
-  const xml = await soapRequest(xaddr, body);
-
+function checkFault(xml) {
   if (/<[^:>]*:?Fault>/i.test(xml)) {
     const reason = extractTag(xml, 'Text') || extractTag(xml, 'Reason') || 'Fault ONVIF (credencials incorrectes o no proporcionades?)';
     throw new Error(reason);
   }
+}
+
+async function getDeviceInformation(xaddr, username, password) {
+  const body = '<GetDeviceInformation xmlns="http://www.onvif.org/ver10/device/wsdl"/>';
+  const xml = await soapRequest(xaddr, buildEnvelope(body, username, password));
+  checkFault(xml);
 
   return {
     manufacturer: extractTag(xml, 'Manufacturer'),
@@ -100,4 +101,48 @@ async function getDeviceInformation(xaddr, username, password) {
   };
 }
 
-module.exports = { getDeviceInformation };
+async function getCapabilities(xaddr, username, password) {
+  const body = '<GetCapabilities xmlns="http://www.onvif.org/ver10/device/wsdl"><Category>Media</Category></GetCapabilities>';
+  const xml = await soapRequest(xaddr, buildEnvelope(body, username, password));
+  checkFault(xml);
+
+  const match = xml.match(/<[^:>]*:?Media>\s*<[^:>]*:?XAddr>([^<]*)</i);
+  return { mediaXAddr: match ? match[1].trim() : null };
+}
+
+async function getProfiles(mediaXaddr, username, password) {
+  const body = '<GetProfiles xmlns="http://www.onvif.org/ver10/media/wsdl"/>';
+  const xml = await soapRequest(mediaXaddr, buildEnvelope(body, username, password));
+  checkFault(xml);
+
+  return [...xml.matchAll(/<[^:>]*:?Profiles[^>]*\stoken="([^"]+)"/gi)].map((m) => m[1]);
+}
+
+async function getStreamUri(mediaXaddr, profileToken, username, password) {
+  const body =
+    '<GetStreamUri xmlns="http://www.onvif.org/ver10/media/wsdl">' +
+    '<StreamSetup>' +
+    '<Stream xmlns="http://www.onvif.org/ver10/schema">RTP-Unicast</Stream>' +
+    '<Transport xmlns="http://www.onvif.org/ver10/schema"><Protocol>RTSP</Protocol></Transport>' +
+    '</StreamSetup>' +
+    `<ProfileToken>${escapeXml(profileToken)}</ProfileToken>` +
+    '</GetStreamUri>';
+  const xml = await soapRequest(mediaXaddr, buildEnvelope(body, username, password));
+  checkFault(xml);
+
+  return extractTag(xml, 'Uri');
+}
+
+async function getRtspUri(deviceXaddr, username, password) {
+  const caps = await getCapabilities(deviceXaddr, username, password);
+  const mediaXaddr = caps.mediaXAddr || deviceXaddr;
+
+  const tokens = await getProfiles(mediaXaddr, username, password);
+  if (tokens.length === 0) throw new Error('El dispositiu no te cap perfil de media.');
+
+  const uri = await getStreamUri(mediaXaddr, tokens[0], username, password);
+  if (!uri) throw new Error("No s'ha pogut obtenir la URI del stream.");
+  return uri;
+}
+
+module.exports = { getDeviceInformation, getCapabilities, getProfiles, getStreamUri, getRtspUri };

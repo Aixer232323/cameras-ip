@@ -57,6 +57,42 @@ Per cada dispositiu trobat es mostra la IP, els ports oberts, la MAC, el fabrica
 
 > Nota: la identificació de fabricant envia la MAC de cada dispositiu trobat a un servei extern (api.macvendors.com) per resoldre'n l'OUI.
 
+## Visualització web dels streams
+
+El projecte inclou un servidor web que mostra en directe les càmeres ONVIF trobades a la xarxa.
+
+Requereix **ffmpeg** instal·lat i disponible al `PATH` (fa la conversió RTSP → MJPEG).
+
+```
+npm run web
+```
+
+o directament:
+
+```
+node src/server.js
+```
+
+Després obre **http://localhost:3000** al navegador. La pàgina detecta automàticament les càmeres ONVIF de la xarxa i mostra una graella amb la imatge en directe de cadascuna (MJPEG, sense àudio, uns 1–2 segons de latència).
+
+Si les càmeres requereixen autenticació (habitual per obtenir la URL RTSP mitjançant el servei de mitjans ONVIF), passa les credencials igual que amb l'escaneig:
+
+```
+$env:ONVIF_USER = "admin"
+$env:ONVIF_PASS = "la-teva-contrasenya"
+node src/server.js
+```
+
+El port per defecte és `3000` (configurable amb la variable `PORT`).
+
+### Com funciona
+
+1. El navegador demana `/api/cameras`, que fa WS-Discovery + `GetDeviceInformation` per llistar les càmeres (fabricant, model...).
+2. Cada targeta de la graella carrega `/stream/<ip>`, que al servidor:
+   - obté la URL RTSP real de la càmera via ONVIF (`GetCapabilities` → `GetProfiles` → `GetStreamUri`),
+   - hi afegeix les credencials si s'han proporcionat,
+   - llança `ffmpeg` per transcodificar el RTSP a MJPEG i el retransmet directament com a resposta HTTP (`multipart/x-mixed-replace`), que el navegador mostra amb una simple etiqueta `<img>`.
+
 ## Estat
 
-Escaneig i identificació bàsica de dispositius implementats. Pendent: gestió/visualització de streams.
+Escaneig, identificació de dispositius i visualització web dels streams implementats.

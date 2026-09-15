@@ -5,6 +5,7 @@
   "description": "Cerca i gestio de camares IP a la xarxa local",
   "main": "src/scan.js",
   "scripts": {
-    "scan": "node src/scan.js"
+    "scan": "node src/scan.js",
+    "web": "node src/server.js"
   }
 }
