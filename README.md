@@ -93,6 +93,17 @@ El port per defecte és `3000` (configurable amb la variable `PORT`).
    - hi afegeix les credencials si s'han proporcionat,
    - llança `ffmpeg` per transcodificar el RTSP a MJPEG i el retransmet directament com a resposta HTTP (`multipart/x-mixed-replace`), que el navegador mostra amb una simple etiqueta `<img>`.
 
+## Inventari de càmeres conegudes
+
+Càmeres detectades a la xarxa local (`192.168.0.0/24`) fins ara:
+
+| IP | Fabricant / Model | MAC | ONVIF | Notes |
+|---|---|---|---|---|
+| 192.168.0.23 | WVC W5M | 68-B9-D3-0A-6A-D2 | Sí | Confirmada per WS-Discovery; servei ONVIF a `:8899`. Credencials pròpies (no per defecte). |
+| 192.168.0.18 | Shenzhen Trolink Technology (mateix fabricant/xarxa de MACs que la .23) | 68-B9-D3-0C-3A-A2 | No confirmada | Ports oberts: 554 (RTSP), 8899. No respon a WS-Discovery — possiblement ONVIF desactivat o servei en un altre port. |
+
+> Aquesta taula és una referència manual de l'estat de la xarxa en un moment donat. Per obtenir l'estat actual, executa `npm run scan`.
+
 ## Estat
 
 Escaneig, identificació de dispositius i visualització web dels streams implementats.
