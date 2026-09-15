@@ -5,6 +5,7 @@ const net = require('net');
 const dgram = require('dgram');
 const os = require('os');
 const crypto = require('crypto');
+const { getArpTable, lookupVendors } = require('./mac-vendor');
 
 const CAMERA_PORTS = [80, 443, 554, 8000, 8080, 37777, 34567, 2020, 8899, 9000];
 const TCP_TIMEOUT_MS = 600;
@@ -124,10 +125,21 @@ async function main() {
     return;
   }
 
+  const arpTable = getArpTable();
+  const macsToLookup = results
+    .map(({ host }) => arpTable.get(host))
+    .filter(Boolean);
+
+  console.log(`\nIdentificant fabricant per MAC (${macsToLookup.length} dispositiu/s, via api.macvendors.com)...`);
+  const vendors = await lookupVendors(macsToLookup);
+
   console.log('\nDispositius trobats:');
   for (const { host, openPorts } of results) {
     const onvifTag = onvifResults.has(host) ? '  [ONVIF]' : '';
-    console.log(`  ${host}  ->  ports: ${openPorts.join(', ')}${onvifTag}`);
+    const mac = arpTable.get(host);
+    const vendor = mac ? vendors.get(mac) || 'Fabricant desconegut' : 'MAC desconeguda';
+    const macInfo = mac ? `${mac} (${vendor})` : vendor;
+    console.log(`  ${host}  ->  ports: ${openPorts.join(', ')}  |  ${macInfo}${onvifTag}`);
   }
 }
 
