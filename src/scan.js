@@ -6,10 +6,28 @@ const dgram = require('dgram');
 const os = require('os');
 const crypto = require('crypto');
 const { getArpTable, lookupVendors } = require('./mac-vendor');
+const { getDeviceInformation } = require('./onvif');
 
 const CAMERA_PORTS = [80, 443, 554, 8000, 8080, 37777, 34567, 2020, 8899, 9000];
 const TCP_TIMEOUT_MS = 600;
 const CONCURRENCY = 64;
+
+function parseArgs(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (!arg.startsWith('--')) continue;
+    const [key, inlineValue] = arg.slice(2).split('=');
+    if (inlineValue !== undefined) {
+      args[key] = inlineValue;
+    } else if (argv[i + 1] && !argv[i + 1].startsWith('--')) {
+      args[key] = argv[++i];
+    } else {
+      args[key] = true;
+    }
+  }
+  return args;
+}
 
 function getLocalSubnet() {
   const ifaces = os.networkInterfaces();
@@ -89,7 +107,11 @@ function onvifDiscovery(timeoutMs = 3000) {
     );
 
     socket.on('message', (msg, rinfo) => {
-      found.set(rinfo.address, msg.toString('utf8'));
+      if (found.has(rinfo.address)) return;
+      const text = msg.toString('utf8');
+      const xaddrMatch = text.match(/<[^:>]*:?XAddrs>([^<]*)</i);
+      const xaddr = xaddrMatch ? xaddrMatch[1].trim().split(/\s+/)[0] : null;
+      found.set(rinfo.address, { xaddr });
     });
     socket.on('error', () => {});
 
@@ -105,6 +127,10 @@ function onvifDiscovery(timeoutMs = 3000) {
 }
 
 async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const onvifUser = args.user || process.env.ONVIF_USER;
+  const onvifPass = args.pass || process.env.ONVIF_PASS;
+
   const { base, address } = getLocalSubnet();
   console.log(`Interficie local: ${address}  |  Xarxa: ${base}.0/24\n`);
 
@@ -114,6 +140,28 @@ async function main() {
     console.log('  Cap resposta ONVIF.\n');
   } else {
     for (const ip of onvifResults.keys()) console.log(`  ONVIF trobat a ${ip}`);
+
+    if (!onvifUser || !onvifPass) {
+      console.log("  (Sense credencials ONVIF: passa --user/--pass o ONVIF_USER/ONVIF_PASS per obtenir info del dispositiu)");
+    }
+
+    console.log('\nInformacio dels dispositius ONVIF:');
+    for (const [ip, { xaddr }] of onvifResults) {
+      if (!xaddr) {
+        console.log(`  ${ip}: no s'ha pogut obtenir la XAddr del servei ONVIF.`);
+        continue;
+      }
+      try {
+        const info = await getDeviceInformation(xaddr, onvifUser, onvifPass);
+        console.log(`  ${ip} (${xaddr})`);
+        console.log(`    Fabricant: ${info.manufacturer || '-'}`);
+        console.log(`    Model: ${info.model || '-'}`);
+        console.log(`    Firmware: ${info.firmwareVersion || '-'}`);
+        console.log(`    Numero de serie: ${info.serialNumber || '-'}`);
+      } catch (err) {
+        console.log(`  ${ip} (${xaddr}): no s'ha pogut obtenir informacio - ${err.message}`);
+      }
+    }
     console.log('');
   }
 
